@@ -4,6 +4,9 @@ const Category = require("../database/models/category");
 const Product = require("../database/models/product");
 
 const parsePaginationParams = require("../utils/parsePaginationParams");
+const parseProductsFilterParams = require("../utils/parseProductsFilterParams");
+const orderBy = require("../utils/orderBy");
+const createSortFilter = require("../utils/createSortFilter");
 
 const router = express.Router();
 
@@ -41,24 +44,46 @@ router.get("/:id", async (req, res) => {
     return res.status(404).json({ message: "wrong id" });
   }
 
-  const productsRequest = Product.findAll({
-    where: { categoryId: normalizedId },
+  const { page, limit } = parsePaginationParams(req.query);
+  const {priceFrom, priceTo, discont} = parseProductsFilterParams(req.query);
+  const {sort} = req.query;
+
+  const offset = (page - 1) * limit;
+
+  const where = createSortFilter({priceFrom, priceTo, discont});
+  where.categoryId = normalizedId;
+
+  const order = orderBy[sort] ? orderBy[sort] : orderBy.default;
+
+  const total = await Product.count({
+    where
   });
-  const categoryRequest = Category.findOne({ where: { id: normalizedId } });
-  const [products, category] = await Promise.all([
-    productsRequest,
-    categoryRequest,
-  ]);
+
+  const category = await Category.findOne({ where: { id: normalizedId } });
+
+  const products = await Product.findAll({
+    offset,
+    limit,
+    where,
+    order,
+  });
 
   if (!category) {
     res.status(404).json({ message: `Category with id=${id} not found` });
     return;
   }
 
+  const totalPages = Math.ceil(total / limit);
+
   res.json({
-    category,
-    data: products,
+    total,
+    totalPages,
+    data: {
+      category,
+      products,
+    }
   });
+
 });
 
 module.exports = router;

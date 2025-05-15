@@ -1,76 +1,37 @@
 const express = require("express");
-const { Op } = require("sequelize");
 
 const Product = require("../database/models/product");
 
 const parsePaginationParams = require("../utils/parsePaginationParams");
 const parseProductsFilterParams = require("../utils/parseProductsFilterParams");
+const orderBy = require("../utils/orderBy");
+const createSortFilter = require("../utils/createSortFilter");
 
 const router = express.Router();
 
 router.get("/all", async (req, res) => {
   const { page, limit } = parsePaginationParams(req.query);
-  const filters = parseProductsFilterParams(req.query);
+  const {priceFrom, priceTo, discont} = parseProductsFilterParams(req.query);
+  const {sort} = req.query;
 
   const offset = (page - 1) * limit;
 
-  const where = {};
+  const where = createSortFilter({priceFrom, priceTo, discont});
 
-  if (filters.priceFrom && filters.priceTo) {
-    where.price = {
-      [Op.between]: [filters.priceFrom, filters.priceTo],
-    };
-  } else if (filters.priceFrom && !filters.priceTo) {
-    where.price = { [Op.gte]: filters.priceFrom };
-  } else if(!filters.priceFrom && filters.priceTo) {
-    where.price = {
-      [Op.lte]: filters.priceTo
-    }
-  }
-
-  // if (filters.priceFrom && filters.priceTo) {
-  // where.price = {
-  //     [Op.between]: [priceFrom, priceTo]
-  // };
-  // } else if (priceFrom !== null) {
-  // where.price = {
-  //     [Op.gte]: priceFrom
-  // };
-  // } else if (priceTo !== null) {
-  // where.price = {
-  //     [Op.lte]: priceTo
-  // };
-  // }
-
-  const result = await Product.findAll({
-    offset,
-    limit,
-    where,
-  });
-
-  res.json(result);
-});
-
-router.get("/sale", async (req, res) => {
-  const { page, limit } = parsePaginationParams(req.query);
-  const offset = (page - 1) * limit;
-  const data = await Product.findAll({
-    offset,
-    limit,
-    where: {
-      discont_price: {
-        [Op.ne]: null,
-      },
-    },
-  });
+  const order = orderBy[sort] ? orderBy[sort] : orderBy.default;
 
   const total = await Product.count({
-    discont_price: {
-      [Op.ne]: null,
-    },
+    where
   });
 
   const totalPages = Math.ceil(total / limit);
+
+  const data = await Product.findAll({
+    offset,
+    limit,
+    where,
+    order,
+  });
 
   res.json({
     total,
@@ -94,12 +55,6 @@ router.get("/:id", async (req, res) => {
   }
 
   res.json(all);
-});
-
-router.get("/add/:title/:price/:discont_price/:description", (req, res) => {
-  const { title, price, discont_price, description } = req.params;
-  Product.create({ title, price, discont_price, description, categoryId: 1 });
-  res.json(`добавлено`);
 });
 
 module.exports = router;
